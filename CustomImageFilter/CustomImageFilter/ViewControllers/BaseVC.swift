@@ -7,24 +7,83 @@
 //
 
 import UIKit
-extension UIImageView {
-    var contentClippingRect: CGRect {
-        guard let image = image else { return bounds }
-        guard contentMode == .scaleAspectFit else { return bounds }
-        guard image.size.width > 0 && image.size.height > 0 else { return bounds }
+extension UIImage {
+    
+//    /// Returns a image that fills in newSize
+//    func resizedImage(newSize: CGSize) -> UIImage {
+//        // Guard newSize is different
+//        guard self.size != newSize else { return self }
+//
+//        UIGraphicsBeginImageContextWithOptions(newSize, false, 0.0);
+//        self.draw(in: CGRect.init(x: 0, y: 0, width: newSize.width, height: newSize.height))
+//
+//
+//
+//        let newImage: UIImage = UIGraphicsGetImageFromCurrentImageContext()!
+//        UIGraphicsEndImageContext()
+//        return newImage
+//    }
+    
+    /// Returns a resized image that fits in rectSize, keeping it's aspect ratio
+    /// Note that the new image size is not rectSize, but within it.
+    
+    
+    func scaledImageWithinRect(rectSize: CGSize,text: String,point:CGPoint,imgFrame:CGRect) -> UIImage {
+        let widthFactor = size.width / rectSize.width
+        let heightFactor = size.height / rectSize.height
         
-        let scale: CGFloat
-        if image.size.width > image.size.height {
-            scale = bounds.width / image.size.width
-        } else {
-            scale = bounds.height / image.size.height
+        var resizeFactor = widthFactor
+        if size.height > size.width {
+            resizeFactor = heightFactor
         }
         
-        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-        let x = (bounds.width - size.width) / 2.0
-        let y = (bounds.height - size.height) / 2.0
+        let newSize = CGSize(width: size.width/resizeFactor, height: size.height/resizeFactor)
         
-        return CGRect(x: x, y: y, width: size.width, height: size.height)
+        
+        let textColor = UIColor.red
+        let textFont = UIFont.boldSystemFont(ofSize: 20)
+        let textFontAttributes = [
+                    NSAttributedStringKey.font: textFont,
+                    NSAttributedStringKey.foregroundColor: textColor,
+                    ] as [NSAttributedStringKey : Any]
+        
+        
+//        guard self.size != newSize else { return self }
+        
+        UIGraphicsBeginImageContextWithOptions(newSize, false, 0.0);
+        self.draw(in: CGRect.init(x: 0, y: 0, width: newSize.width, height: newSize.height))
+        
+        
+//        let rect = CGRect(origin: point, size: CGSize(width: imgFrame.size.width, height: imgFrame.size.height))
+        let rect = CGRect.init(x: point.x, y: point.y, width: newSize.width, height: newSize.height)
+        text.draw(in: rect, withAttributes: textFontAttributes)
+        
+        let newImage: UIImage = UIGraphicsGetImageFromCurrentImageContext()!
+        UIGraphicsEndImageContext()
+        
+//        let resized = resizedImage(newSize: newSize)
+        return newImage
+    }
+    
+}
+extension UIImageView {
+    var contentClippingRect: CGRect {
+        
+        let imageViewSize = self.frame.size
+        guard let imageSize = self.image?.size else{return CGRect.zero}
+        let imageRatio = imageSize.width / imageSize.height
+        let imageViewRatio = imageViewSize.width / imageViewSize.height
+        if imageRatio < imageViewRatio {
+            let scaleFactor = imageViewSize.height / imageSize.height
+            let width = imageSize.width * scaleFactor
+            let topLeftX = (imageViewSize.width - width) * 0.5
+            return CGRect(x: topLeftX, y: 0, width: width, height: imageViewSize.height)
+        }else{
+            let scalFactor = imageViewSize.width / imageSize.width
+            let height = imageSize.height * scalFactor
+            let topLeftY = (imageViewSize.height - height) * 0.5
+            return CGRect(x: 0, y: topLeftY, width: imageViewSize.width, height: height)
+        }
     }
 }
 extension UIViewController {
@@ -58,19 +117,26 @@ extension UIViewController {
                 
             }))
         }
-        self.present(alertVC, animated: true, completion: {
-            
-        })
+        self.present(alertVC, animated: true, completion: {})
     }
 }
 
 class BaseVC: UIViewController {
+    var imageCenterXConstraint:NSLayoutConstraint = NSLayoutConstraint()
+    var imageCenterYConstraint:NSLayoutConstraint = NSLayoutConstraint()
+
+    var beginningPoint:CGPoint!
+    var beginningCenter:CGPoint!
+    var touchLocation:CGPoint!
     
     let btnSelectImage = UIButton()
     let imageView = UIImageView()
     let btnAddCopyright = UIButton()
-    let txtCopyRight = UITextField()
+    var txtCopyRight = UITextField()
     var point = CGPoint()
+    var rect = CGRect()
+    var enableMoveRestriction:Bool = true
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         self.view.backgroundColor = .white
@@ -133,12 +199,16 @@ class BaseVC: UIViewController {
         addConstraint(To: setUpSubViewsOfStackView)
     }
     
+    @objc func setBtnHidden() {
+        self.txtCopyRight.isHidden = true
+    }
+    
     @objc func btnSaveClicked(sender:AnyObject) {
         
-//        self.imageView.image = #imageLiteral(resourceName: "default-image_450")
-        self.imageView.image = self.textToImage(drawText: self.txtCopyRight.text!, inImage: self.imageView.image!, atPoint:self.point)
-        UIImageWriteToSavedPhotosAlbum(self.imageView.image!, self, nil, nil)
-        
+        self.imageView.image = self.textToImage(drawText: self.txtCopyRight.text!, inImage: self.imageView.image!, atPoint:self.point, imgFrame: rect)
+        UIImageWriteToSavedPhotosAlbum(self.imageView.image!,self,nil, nil)
+        self.txtCopyRight.isHidden = true
+        self.txtCopyRight.isUserInteractionEnabled = false
     }
     
     @objc func btnSelectImageClicked(sender: AnyObject) {
@@ -173,6 +243,8 @@ class BaseVC: UIViewController {
     
    @objc func btnAddCopyRightClicked(Sender:AnyObject) {
     
+        self.txtCopyRight.isHidden = false;
+        self.txtCopyRight.isUserInteractionEnabled = true
         self.imageView.addSubview(self.txtCopyRight)
         self.imageView.isUserInteractionEnabled = true
 
@@ -182,59 +254,141 @@ class BaseVC: UIViewController {
         self.txtCopyRight.font = UIFont.boldSystemFont(ofSize: 20)
         self.txtCopyRight.centerXAnchor.constraint(equalTo:self.imageView.centerXAnchor).isActive = true
         self.txtCopyRight.centerYAnchor.constraint(equalTo:self.imageView.centerYAnchor).isActive = true
+    
+    
+    
+    self.imageCenterXConstraint = self.txtCopyRight.centerXAnchor.constraint(equalTo: self.imageView.centerXAnchor)
+    self.imageCenterXConstraint.isActive = true
+    self.imageCenterYConstraint = self.txtCopyRight.centerYAnchor.constraint(equalTo: self.imageView.centerYAnchor)
+    self.imageCenterYConstraint.isActive = true
+    
         self.txtCopyRight.isUserInteractionEnabled = true
         self.txtCopyRight.backgroundColor = .cyan
     
-//        self.txtCopyRight.topAnchor.constraint(equalTo: self.imageView.topAnchor, constant: 10).isActive = true
-//        self.txtCopyRight.bottomAnchor.constraint(equalTo: self.imageView.bottomAnchor, constant: -10).isActive = true
-//        self.txtCopyRight.leadingAnchor.constraint(equalTo: self.imageView.leadingAnchor, constant: 10).isActive = true
-//        self.txtCopyRight.trailingAnchor.constraint(equalTo: self.imageView.trailingAnchor, constant: -10).isActive = true
-    
-    let recognizer = UIPanGestureRecognizer(target: self, action: #selector(handleGesture(gestureRecognizer:)))
+    let recognizer = UIPanGestureRecognizer(target: self, action: #selector(handleGesture(rec:)))
+    recognizer.maximumNumberOfTouches = 1
+    recognizer.minimumNumberOfTouches = 1
     self.txtCopyRight.addGestureRecognizer(recognizer)
-    recognizer.setTranslation(CGPoint(x: 0,y :0), in: self.imageView)
-    
-    
+//    recognizer.setTranslation(CGPoint(x: 0,y :0), in: self.imageView)
     }
     
-    @objc func handleGesture(gestureRecognizer:UIPanGestureRecognizer) {
-        self.point = gestureRecognizer.location(in: self.imageView)
-        let boundRect = self.imageView.contentClippingRect
+    @objc func handleGesture(rec:UIPanGestureRecognizer) {
         
-        if (boundRect.contains(point)) {
-            self.txtCopyRight.frame.origin.x = point.x
-            self.txtCopyRight.frame.origin.y = point.y
-            self.txtCopyRight.center = point
-            print(point)
-            print("boundRect \(boundRect)")
-            
+        
+        touchLocation = rec.location(in: self.imageView)
+        switch rec.state {
+        case .began:
+                beginningPoint = touchLocation
+                beginningCenter = self.txtCopyRight.center
+                self.txtCopyRight.center  = self.estimatedCenter()
+            break
+        case .changed:
+            self.txtCopyRight.center  = self.estimatedCenter()
+            break
+        case .ended:
+            self.txtCopyRight.center  = self.estimatedCenter()
+            self.point = self.estimatedCenter()
+            break
+        default:
+            break
         }
+        
+
+        
+//        self.point = CGPoint.zero
+//        self.rect = CGRect.zero
+//        var firstX:CGFloat = 0.0
+//        var firstY:CGFloat = 0.0
+//        self.point = rec.location(in: self.imageView)
+//        let boundRect = self.imageView.contentClippingRect
+//        if (boundRect.contains(point)) {
+//
+//            var translatedPoint = rec.translation(in: self.imageView)
+//            if rec.state == .began {
+//                firstX  = (rec.view?.center.x)!
+//                firstY = (rec.view?.center.y)!
+//            }
+//            translatedPoint = CGPoint(x: firstX+translatedPoint.x, y: firstY+translatedPoint.y)
+//
+//            self.txtCopyRight.center = translatedPoint
+//            self.point = translatedPoint
+//
+//        }
+        
+//        CGPoint translatedPoint = [(UIPanGestureRecognizer*)sender translationInView:self.view];
+//        if([(UIPanGestureRecognizer*)sender state] == UIGestureRecognizerStateBegan) {
+//            firstX = [[sender view] center].x;
+//            firstY = [[sender view] center].y;
+//        }
+//        translatedPoint = CGPointMake(firstX+translatedPoint.x, firstY+translatedPoint.y);
+//        [[sender view] setCenter:translatedPoint];
+        
+//        self.point = rec.location(in: self.imageView)
+//        let boundRect = self.imageView.contentClippingRect
+//        if (boundRect.contains(point)) {
+////
+////            print("point:    \(point)")
+////            print("txtfield:    \(self.txtCopyRight.frame)")
+//
+//
+//            if point.x >= 0
+//            {
+//                if let frame = self.txtCopyRight.superview?.convert(self.txtCopyRight.frame, to: nil) {
+//
+//                    var finalPoint = CGPoint(x:(point.x - (frame.size.width/2))  , y: (point.y - (frame.size.height/2)))
+//
+//                    if finalPoint.x >= 0 {
+//                        self.txtCopyRight.frame.origin.x = finalPoint.x
+//                    }
+//                    else  {
+//                        self.txtCopyRight.frame.origin.x = 0
+//                        finalPoint.x = 0
+//                    }
+//
+//
+//                    if finalPoint.y >= 0 {
+//                        self.txtCopyRight.frame.origin.y = finalPoint.y
+//                    }
+//                    else  {
+//                        self.txtCopyRight.frame.origin.y = 0
+//                        finalPoint.y = 0
+//                    }
+//
+//                    self.rect = frame
+//                    self.point = finalPoint
+//
+//
+//                     print("txtfield:    \(self.txtCopyRight.frame)")
+//                     print("point:    \(self.point)")
+//
+//                }
+//            }
     }
     
-    func textToImage(drawText text: String, inImage image: UIImage, atPoint point: CGPoint) -> UIImage {
-        
-        let textColor = UIColor.red
-        let textFont = UIFont.boldSystemFont(ofSize: 20)
-        
-//        let scale = UIScreen.main.scale
-        
-        UIGraphicsBeginImageContext(image.size)
-//        UIGraphicsBeginImageContextWithOptions(image.size, false, scale)
-        
-        let textFontAttributes = [
-            NSAttributedStringKey.font: textFont,
-            NSAttributedStringKey.foregroundColor: textColor,
-            ] as [NSAttributedStringKey : Any]
-        image.draw(in: CGRect(origin: CGPoint.zero, size: image.size))
-        
-        
-        let rect = CGRect(origin: CGPoint(x: 0, y: 0), size: image.size)
-        text.draw(in: rect, withAttributes: textFontAttributes)
-        
-        let newImage = UIGraphicsGetImageFromCurrentImageContext()
-        UIGraphicsEndImageContext()
-        
-        return newImage!
+    func estimatedCenter() -> CGPoint {
+        var newCenter:CGPoint!
+        var newCenterX = beginningCenter.x + (touchLocation.x - beginningPoint.x)
+        var newCenterY = beginningCenter.y + (touchLocation.y - beginningPoint.y)
+        if enableMoveRestriction {
+            if (!(newCenterX  * self.txtCopyRight.bounds.width > 0 &&
+                newCenterX  * self.txtCopyRight.bounds.width < self.imageView.bounds.width)) {
+                    newCenterX = self.txtCopyRight.center.x;
+                }
+            if (!(newCenterY - 0.5 * self.txtCopyRight.bounds.height > 0 &&
+                newCenterY + 0.5 * self.txtCopyRight.bounds.height < self.imageView.bounds.height)) {
+                newCenterY = self.txtCopyRight.center.y;
+            }
+            newCenter = CGPoint(x: newCenterX, y: newCenterY)
+        } else {
+            newCenter = CGPoint(x: newCenterX, y: newCenterY)
+        }
+        return newCenter;
+    }
+    
+    func textToImage(drawText text: String, inImage image: UIImage, atPoint point: CGPoint, imgFrame:CGRect) -> UIImage {
+
+        return image.scaledImageWithinRect(rectSize: self.imageView.frame.size, text: text, point: point, imgFrame: imgFrame)
+
     }
     
 }
@@ -250,6 +404,15 @@ extension BaseVC:UIImagePickerControllerDelegate,UINavigationControllerDelegate 
     
     func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
         picker.dismiss(animated: true, completion: nil)
+    }
+}
+
+extension UITextField {
+    
+    open override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        //print("check point: \(point)")
+        
+        return self
     }
 }
 
